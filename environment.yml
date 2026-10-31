@@ -1,0 +1,11 @@
+
+name: normal-skin-positive-selection
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pandas
+  - openpyxl
+  - matplotlib
+  - seaborn
+

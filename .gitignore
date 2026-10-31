@@ -1,0 +1,16 @@
+# Source data
+data/
+
+# Large R model objects
+*.rds
+
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# R
+.Rhistory
+.RData
