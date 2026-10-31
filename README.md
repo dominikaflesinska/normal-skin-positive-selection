@@ -42,7 +42,7 @@ The supplementary workbook contains somatic variant calls generated using Shearw
 
 The source table contains 3,760 records from 234 biopsy sample IDs, representing four inferred donors.
 
-**Data availability and scope**
+### Data availability and scope
 
 The source is a targeted somatic mutation dataset, not a genome-wide catalogue of all mutations and not a raw sequencing dataset. Consequently, the analyses are restricted to the reported calls and annotations. They do not involve read-level variant calling or independent validation of the original mutation calls.
 
@@ -56,7 +56,7 @@ The supplementary workbook is not redistributed with this repository. To reprodu
 normal-skin-positive-selection-starter/
 │
 ├── data/
-│   └── NIHMS63718-supplement-2.xlsx
+│   └── NIHMS63718-supplement-2.xlsx   # obtained separately
 │
 ├── scripts/
 │   ├── 01_audit_data.py
@@ -64,7 +64,9 @@ normal-skin-positive-selection-starter/
 │   ├── 03_classify_variants.py
 │   ├── 04_check_uv_dinucleotide.py
 │   ├── 05_gene_impact_summary.py
-│   └── 06_prepare_dndscv_input.py
+│   ├── 06_prepare_dndscv_input.py
+│   ├── 07_prepare_donor_level_input.py
+│   └── 08_run_dndscv.R
 │
 ├── results/
 │   ├── data_audit.md
@@ -72,18 +74,18 @@ normal-skin-positive-selection-starter/
 │   ├── mutational_spectrum.md
 │   ├── uv_dinucleotide_check.md
 │   ├── gene_impact_summary.md
-│   ├── dndscv_input_audit.md
-│   ├── dndscv_reference_analysis.md
+│   ├── dndscv_donor_level_audit.md
 │   ├── dndscv_candidate_mutations.csv
 │   ├── dndscv_donor_level_input.csv
 │   ├── own_dndscv_global_results.csv
 │   ├── own_dndscv_gene_results.csv
-│   ├── own_dndscv_full_results.rds
 │   └── [additional CSV tables and figures]
 │
 ├── environment.yml
 └── README.md
 ```
+
+The full dNdScv R object (`own_dndscv_full_results.rds`) is generated locally but excluded from version control because of its size. The original supplementary workbook is also excluded from the repository.
 
 ---
 
@@ -113,15 +115,48 @@ The dNdScv analysis was performed separately using:
 - dndscv 0.0.0.9
 - IRanges
 
-The `IRanges` package was explicitly loaded before running dNdScv.
+Create a separate Conda environment:
 
-The Python and R analyses use separate environments.
+```bash
+conda create -n dndscv-analysis -c conda-forge r-base=4.4.3 r-remotes r-biocmanager
+conda activate dndscv-analysis
+```
+
+Install the required R packages:
+
+```r
+BiocManager::install("IRanges")
+remotes::install_github("martincorena/dndscv")
+```
+
+The analysis script explicitly loads `IRanges` before `dndscv`.
+
+Python and R dependencies are managed in separate environments.
 
 ---
 
 ## Reproducing the analysis
 
-Run the Python scripts from the repository root:
+Run all commands from the repository root.
+
+### 1. Obtain the source data
+
+Download the supplementary workbook from the original publication and place it in:
+
+```text
+data/NIHMS63718-supplement-2.xlsx
+```
+
+The workbook is not included in the repository.
+
+### 2. Set up the Python environment
+
+```bash
+conda env create -f environment.yml
+conda activate normal-skin-positive-selection
+```
+
+### 3. Run the descriptive analysis
 
 ```bash
 python scripts/01_audit_data.py data/NIHMS63718-supplement-2.xlsx
@@ -137,44 +172,44 @@ python scripts/05_gene_impact_summary.py data/NIHMS63718-supplement-2.xlsx
 python scripts/06_prepare_dndscv_input.py data/NIHMS63718-supplement-2.xlsx
 ```
 
-The scripts generate quality-control reports, summary tables and figures in `results/`.
+These scripts generate quality-control reports, summary tables and figures in `results/`.
 
-The dNdScv analysis uses the donor-level candidate table generated during the workflow:
+### 4. Prepare donor-level mutation data
 
-```text
-results/dndscv_donor_level_input.csv
+Run:
+
+```bash
+python scripts/07_prepare_donor_level_input.py
 ```
 
-Example R command used for the analysis:
+This step generates:
 
-```r
-library(IRanges)
-library(dndscv)
+- `results/dndscv_donor_level_input.csv`
+- `results/dndscv_donor_level_audit.md`
 
-mutations <- read.csv(
-  "results/dndscv_donor_level_input.csv",
-  stringsAsFactors = FALSE
-)
+The script removes repeated observations of the same genomic event within an inferred donor, while retaining events observed in different donors.
 
-results <- dndscv(mutations)
+### 5. Run dNdScv
 
-write.csv(
-  results$globaldnds,
-  "results/own_dndscv_global_results.csv",
-  row.names = FALSE
-)
+Activate the R environment:
 
-write.csv(
-  results$sel_cv,
-  "results/own_dndscv_gene_results.csv",
-  row.names = FALSE
-)
-
-saveRDS(
-  results,
-  "results/own_dndscv_full_results.rds"
-)
+```bash
+conda activate dndscv-analysis
 ```
+
+Run:
+
+```bash
+Rscript scripts/08_run_dndscv.R
+```
+
+The script generates:
+
+- `results/own_dndscv_global_results.csv`
+- `results/own_dndscv_gene_results.csv`
+- `results/own_dndscv_full_results.rds`
+
+The full RDS object is excluded from version control because of its size. It is generated locally when the analysis is run.
 
 ---
 
@@ -329,10 +364,9 @@ Events observed in different donors were retained because they may represent ind
 The resulting table is therefore a candidate input rather than a fully validated representation of independent mutational events.
 
 **Outputs:**
-- `results/dndscv_input_audit.md`
+- `results/dndscv_donor_level_audit.md`
 - `results/dndscv_candidate_mutations.csv`
 - `results/dndscv_donor_level_input.csv`
-- `results/recurrent_mutations_within_donors.csv`
 
 ### 7. Preliminary dN/dS analysis using dNdScv
 
@@ -367,7 +401,11 @@ These results identify candidate gene-level signals for further investigation. H
 
 For example, very large missense dN/dS estimates in genes with only three or four observed missense mutations should not be interpreted as precise measures of selection strength.
 
-The analysis also produced a warning that the same genomic mutations were present in multiple donor IDs. These observations may represent independent recurrent events, but this assumption requires further evaluation.
+#### Model filtering and warnings
+
+During execution, dNdScv reported that 2,270 mutations were removed because they exceeded the configured limit of mutations per gene per sample. This filtering was performed by the model during analysis.
+
+The software also issued a warning that the same genomic mutations were observed in multiple sample IDs. The donor-level preprocessing retained 74 genomic events observed in more than one inferred donor, corresponding to 152 donor-level observations. These may represent independent recurrent events, but their independence cannot be confirmed from the available data.
 
 **Important methodological qualification**
 
@@ -377,12 +415,12 @@ The assumptions of dNdScv, including the suitability of the mutation catalogue, 
 
 The dNdScv results are therefore presented as preliminary model-based findings rather than a final biological conclusion.
 
+A separate reference workflow was also tested using the normal-skin example dataset bundled with the dNdScv package. This was a software workflow test and is distinct from the analysis of the project's candidate mutation table.
+
 **Outputs:**
 - `results/own_dndscv_global_results.csv`
 - `results/own_dndscv_gene_results.csv`
-- `results/own_dndscv_full_results.rds`
-
-A separate reference workflow was also tested using the normal-skin example dataset bundled with the dNdScv package. This was a software workflow test and is distinct from the analysis of the project's candidate mutation table.
+- `results/own_dndscv_full_results.rds` (local output, excluded from version control)
 
 ---
 
@@ -434,8 +472,8 @@ The work provides a foundation for further investigation of somatic evolution in
 
 ## Reproducibility and data availability
 
-The repository contains the analysis scripts, environment specification, generated reports, summary tables and model outputs.
+The repository contains the analysis scripts, Python environment specification, generated reports, summary tables and selected model outputs.
 
-The original supplementary workbook is not included and must be obtained from the publication. All reported results refer to the specific supplementary dataset and processing steps described above.
+The full dNdScv R object (`own_dndscv_full_results.rds`) is generated locally and excluded from version control because of its size.
 
-The analyses are intended to be reproducible from the repository root, subject to obtaining the source workbook and installing the specified software dependencies.
+The original supplementary workbook is not included and must be obtained from the publication. The analyses can be reproduced from the repository root after obtaining the source workbook and installing the Python and R dependencies described above.
